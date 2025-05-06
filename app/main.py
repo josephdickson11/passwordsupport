@@ -1,7 +1,19 @@
+
+import warnings
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Suppress specific warnings related to bcrypt version
+warnings.filterwarnings("ignore", message=".*error reading bcrypt version.*")
+
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 from jose import JWTError, jwt
+# Create a custom passlib context that handles the bcrypt warning
 from passlib.context import CryptContext
 from datetime import datetime, timedelta
 import boto3
@@ -54,21 +66,12 @@ cipher = Fernet(FERNET_KEY.encode())
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+@app.get("/test")
+async def test_endpoint():
+    """
+    Simple test endpoint to verify API is working.
+    """
+    return {"status": "ok", "message": "API is working"}
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -123,22 +126,34 @@ def generate_password(nr_cap_letters: int, nr_letters: int, nr_symbols: int, nr_
 
 @app.post("/register", response_model=User)
 async def register(user: UserRegister):
-    hashed_password = get_password_hash(user.password)
-    user = {
-        'username': user.username,
-        'email': user.email,
-        'hashed_password': hashed_password
-    }
+    logger.info(f"Registering user: {user.username}, email: {user.email}")
     try:
+        hashed_password = get_password_hash(user.password)
+        logger.info("Password hashed successfully")
+        
+        user_data = {
+            'username': user.username,
+            'email': user.email,
+            'hashed_password': hashed_password
+        }
+        
+        logger.info(f"Attempting to save user to DynamoDB: {user.username}")
         users_table.put_item(
-            Item=user,
+            Item=user_data,
             ConditionExpression='attribute_not_exists(username)'
         )
-        return User(**user)
+        logger.info(f"User {user.username} registered successfully")
+        return User(**user_data)
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+        error_code = e.response['Error']['Code']
+        logger.error(f"DynamoDB error: {error_code} - {str(e)}")
+        if error_code == 'ConditionalCheckFailedException':
             raise HTTPException(status_code=400, detail="Username already exists")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Unexpected DynamoDB error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error during registration: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @app.post("/token", response_model=Token)
