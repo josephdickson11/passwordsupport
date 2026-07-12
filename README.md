@@ -173,6 +173,74 @@ pytest
 black app/
 ```
 
+## Deployment to AWS Lambda with API Gateway (Using Existing DynamoDB Tables)
+
+If you've already created and tested your DynamoDB tables locally, you can deploy the API to AWS Lambda while using your existing tables.
+
+### Prerequisites
+
+- AWS CLI installed and configured
+- Docker installed
+- AWS SAM CLI installed
+- Existing DynamoDB tables set up
+
+### Deployment Steps
+
+1. Make sure your `.env` file contains the correct configuration:
+
+```
+AWS_ACCESS_KEY_ID=your_aws_access_key
+AWS_SECRET_ACCESS_KEY=your_aws_secret_key
+AWS_REGION=your_aws_region
+USERS_TABLE_NAME=users
+PASSWORDS_TABLE_NAME=passwords
+FERNET_KEY=your_fernet_key
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+ALGORITHM=HS256
+SECRET_KEY=your_secret_key
+```
+
+2. Run the deployment script:
+
+```bash
+chmod +x deploy_existing_tables.sh
+./deploy_existing_tables.sh
+```
+
+This script will:
+- Build and push your Docker image to Amazon ECR
+- Deploy a CloudFormation stack that creates:
+  - A Lambda function using your Docker image
+  - An API Gateway REST API
+  - IAM roles and policies for accessing your existing DynamoDB tables
+- Output the API Gateway URL for testing
+
+3. Test your deployed API:
+
+```bash
+# Get the API Gateway URL from the script output
+API_URL="https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/Prod/"
+
+# Register a user
+curl -X POST "$API_URL/register" \
+  -H "Content-Type: application/json" \
+  -d '{"username": "testuser", "email": "test@example.com", "password": "securepassword"}'
+
+# Get a token
+curl -X POST "$API_URL/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "username=testuser&password=securepassword"
+```
+
+### Troubleshooting
+
+If you encounter issues with the deployment:
+
+1. Check CloudWatch Logs for Lambda function errors
+2. Verify your DynamoDB table permissions
+3. Ensure your environment variables are correctly set in the Lambda function
+4. Check that your Docker image builds and runs correctly locally
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

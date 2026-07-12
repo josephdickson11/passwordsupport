@@ -1,0 +1,74 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Password Support API with Lambda and API Gateway
+
+Parameters:
+  UsersTableName:
+    Type: String
+    Default: users
+    Description: Name of your existing Users DynamoDB table
+  
+  PasswordsTableName:
+    Type: String
+    Default: passwords
+    Description: Name of your existing Passwords DynamoDB table
+  
+  FernetKey:
+    Type: String
+    NoEcho: true
+    Description: Your Fernet encryption key
+  
+  SecretKey:
+    Type: String
+    NoEcho: true
+    Description: Your JWT secret key
+  
+  TokenExpireMinutes:
+    Type: Number
+    Default: 3600
+    Description: JWT token expiration time in minutes
+
+Resources:
+  PasswordSupportFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/passwordsupport:latest
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          USERS_TABLE_NAME: !Ref UsersTableName
+          PASSWORDS_TABLE_NAME: !Ref PasswordsTableName
+          FERNET_KEY: !Ref FernetKey
+          SECRET_KEY: !Ref SecretKey
+          ACCESS_TOKEN_EXPIRE_MINUTES: !Ref TokenExpireMinutes
+          ALGORITHM: HS256
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+              Resource: 
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${UsersTableName}
+                - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${PasswordsTableName}
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt PasswordSupportFunction.Arn
